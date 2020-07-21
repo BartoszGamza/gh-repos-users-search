@@ -5,7 +5,9 @@ import Search from './search';
 function App() {
   return (
     <div className="App">
-      <Search />
+      <div className="search-wrapper">
+        <Search />
+      </div>
     </div>
   );
 }

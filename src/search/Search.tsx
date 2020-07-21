@@ -1,10 +1,12 @@
 import React, { FC, useState, useEffect, useCallback, RefObject, createRef, Dispatch, SetStateAction } from 'react';
+import spinner from '../assets/spinner.gif';
 import './search.css';
 
 type optionType = {
   name: string;
   id: string;
   url: string;
+  type: string;
 };
 
 type listOptionType = {
@@ -48,6 +50,7 @@ const Search: FC = () => {
   const [query, setQuery] = useState('');
   const [options, setOptions] = useState(initialOptionsState);
   const [error, setError] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [cursor, setCursor] = useState(0);
   const [hovered, setHovered] = useState<optionType | undefined>(undefined);
 
@@ -58,12 +61,17 @@ const Search: FC = () => {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function formatResult(item: any): optionType {
-    return { name: item.name || item.login, id: item.id, url: item.html_url };
+    return { name: item.name || item.login, id: item.id, url: item.html_url, type: item.type };
   }
 
   const fetchResults = useCallback(async (context: string, query: string): Promise<optionType[]> => {
     return await fetch(`https://api.github.com/search/${context}?q=${query}&per_page=50&page=1`)
-      .then((response) => response.json())
+      .then((response) => {
+        if (!response.ok) throw new Error('Error');
+        else {
+          return response.json();
+        }
+      })
       .then((result) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const formatted = result?.items?.map((item: any) => formatResult(item));
@@ -79,23 +87,29 @@ const Search: FC = () => {
     async function searchForQuery() {
       const contexts = ['repositories', 'users'];
       const promises = contexts.map((context) => fetchResults(context, query));
+      setLoading(true);
       const results = (await Promise.all(promises)).flat();
-      results.sort((a, b) => {
-        const aName = a.name.toLowerCase();
-        const bName = b.name.toLowerCase();
-        if (aName > bName) {
-          return 1;
-        }
-        if (aName < bName) {
-          return -1;
-        }
-        return 0;
-      });
-      setOptions(results);
+      setLoading(false);
+      if (results.length) {
+        results.sort((a, b) => {
+          const aName = a.name.toLowerCase();
+          const bName = b.name.toLowerCase();
+          if (aName > bName) {
+            return 1;
+          }
+          if (aName < bName) {
+            return -1;
+          }
+          return 0;
+        });
+        setOptions(results);
+      }
     }
     if (query.length >= 3) {
       const time = setTimeout(() => {
-        searchForQuery();
+        if (query === inputRef.current?.value) {
+          searchForQuery();
+        }
       }, 500);
       return () => clearTimeout(time);
     } else if (options.length) {
@@ -115,7 +129,7 @@ const Search: FC = () => {
     }
   }, [upKey]);
   useEffect(() => {
-    if ((options.length && enterKey) || (options.length && hovered)) {
+    if (options.length && enterKey) {
       openLink(options[cursor]);
     }
   }, [enterKey]);
@@ -123,7 +137,7 @@ const Search: FC = () => {
     if (options.length && hovered) {
       setCursor(options.indexOf(hovered));
     }
-  }, [hovered]);
+  }, [hovered, options.length]);
 
   const openLink = (option: optionType) => {
     const card = window.open(option?.url, '_blank');
@@ -138,29 +152,38 @@ const Search: FC = () => {
       onMouseEnter={() => setHovered(option)}
     >
       {option.name}
+      <span className="result__type">{option.type || 'Repository'}</span>
     </div>
   );
 
   return (
     <div className="wrapper">
-      <input className="input" ref={inputRef} value={query} onChange={(event) => setQuery(event.target.value)} />
+      <input
+        placeholder="Search for rusers and repositories"
+        className="input"
+        ref={inputRef}
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+      />
+      {loading && <img className="spinner" src={spinner} />}
       <div className="results">
-        {options.length && !error ? (
-          options.map((option: optionType, i: number) => (
-            <ListOption
-              key={option.id}
-              option={option}
-              active={i === cursor}
-              setSelected={openLink}
-              setHovered={setHovered}
-            />
-          ))
-        ) : error ? (
-          <p>Error occured</p>
-        ) : (
-          ''
-        )}
+        {options.length && !error
+          ? options.map((option: optionType, i: number) => {
+              if (option?.id) {
+                return (
+                  <ListOption
+                    key={option.id}
+                    option={option}
+                    active={i === cursor}
+                    setSelected={openLink}
+                    setHovered={setHovered}
+                  />
+                );
+              }
+            })
+          : null}
       </div>
+      {error && <div>Error occured</div>}
     </div>
   );
 };
