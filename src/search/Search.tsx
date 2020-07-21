@@ -1,4 +1,5 @@
-import React, { FC, useState, useEffect, useCallback, RefObject, createRef, Dispatch, SetStateAction } from 'react';
+import React, { FC, useState, useEffect, useCallback, Dispatch, SetStateAction, useRef } from 'react';
+import useKey from './useKey';
 import spinner from '../assets/spinner.gif';
 import './search.css';
 
@@ -16,34 +17,6 @@ type listOptionType = {
   setHovered: Dispatch<SetStateAction<optionType | undefined>>;
 };
 
-const useKey = function (tagret: string, ref: RefObject<HTMLInputElement>) {
-  const [keyPressed, setKeyPressed] = useState(false);
-
-  function downHandler({ key }: { key: string }) {
-    if (key === tagret) {
-      setKeyPressed(true);
-    }
-  }
-
-  const upHandler = ({ key }: { key: string }) => {
-    if (key === tagret) {
-      setKeyPressed(false);
-    }
-  };
-
-  useEffect(() => {
-    ref.current?.addEventListener('keydown', downHandler);
-    ref.current?.addEventListener('keyup', upHandler);
-
-    return () => {
-      ref.current?.removeEventListener('keydown', downHandler);
-      ref.current?.removeEventListener('keyup', upHandler);
-    };
-  });
-
-  return keyPressed;
-};
-
 const initialOptionsState: optionType[] = [];
 
 const Search: FC = () => {
@@ -54,10 +27,15 @@ const Search: FC = () => {
   const [cursor, setCursor] = useState(0);
   const [hovered, setHovered] = useState<optionType | undefined>(undefined);
 
-  const inputRef = createRef<HTMLInputElement>();
+  const inputRef = useRef<HTMLInputElement>(null);
   const downKey = useKey('ArrowDown', inputRef);
   const upKey = useKey('ArrowUp', inputRef);
-  const enterKey = useKey('Enter', inputRef);
+
+  const openLink = (option: optionType = options[cursor]) => {
+    if (option?.url) window.open(option?.url, '_blank');
+  };
+
+  useKey('Enter', inputRef, openLink);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function formatResult(item: any): optionType {
@@ -83,66 +61,65 @@ const Search: FC = () => {
       });
   }, []);
 
+  const handleUpdate = async (value: string) => {
+    setQuery(value);
+    if (value.length > 2) {
+      setLoading(true);
+    } else if (options.length) {
+      setOptions([]);
+      setError(false);
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    async function searchForQuery() {
+    function searchForQuery() {
       const contexts = ['repositories', 'users'];
       const promises = contexts.map((context) => fetchResults(context, query));
-      setLoading(true);
-      const results = (await Promise.all(promises)).flat();
-      setLoading(false);
-      if (results.length) {
-        results.sort((a, b) => {
-          const aName = a.name.toLowerCase();
-          const bName = b.name.toLowerCase();
-          if (aName > bName) {
-            return 1;
-          }
-          if (aName < bName) {
-            return -1;
-          }
-          return 0;
-        });
-        setOptions(results);
-      }
+      Promise.all(promises).then((response) => {
+        const results = response.flat();
+        setLoading(false);
+        if (results.length) {
+          results.sort((a, b) => {
+            const aName = a.name.toLowerCase();
+            const bName = b.name.toLowerCase();
+            if (aName > bName) {
+              return 1;
+            }
+            if (aName < bName) {
+              return -1;
+            }
+            return 0;
+          });
+          setOptions(results);
+        }
+      });
     }
-    if (query.length >= 3) {
+    if (loading) {
       const time = setTimeout(() => {
         if (query === inputRef.current?.value) {
           searchForQuery();
         }
       }, 500);
       return () => clearTimeout(time);
-    } else if (options.length) {
-      setOptions([]);
-      setError(false);
     }
-  }, [query, setOptions, fetchResults]);
+  }, [query, fetchResults, loading]);
 
   useEffect(() => {
     if (options.length && downKey) {
       setCursor((prevState) => (prevState < options.length - 1 ? prevState + 1 : prevState));
     }
-  }, [downKey]);
+  }, [downKey, options.length]);
   useEffect(() => {
     if (options.length && upKey) {
       setCursor((prevState) => (prevState > 0 ? prevState - 1 : prevState));
     }
-  }, [upKey]);
-  useEffect(() => {
-    if (options.length && enterKey) {
-      openLink(options[cursor]);
-    }
-  }, [enterKey]);
+  }, [upKey, options.length]);
   useEffect(() => {
     if (options.length && hovered) {
       setCursor(options.indexOf(hovered));
     }
-  }, [hovered, options.length]);
-
-  const openLink = (option: optionType) => {
-    const card = window.open(option?.url, '_blank');
-    card?.focus();
-  };
+  }, [hovered, options.length, options]);
 
   const ListOption = ({ option, active, setSelected, setHovered }: listOptionType) => (
     <div
@@ -163,9 +140,9 @@ const Search: FC = () => {
         className="input"
         ref={inputRef}
         value={query}
-        onChange={(event) => setQuery(event.target.value)}
+        onChange={(event) => handleUpdate(event.target.value)}
       />
-      {loading && <img className="spinner" src={spinner} />}
+      {loading && <img className="spinner" src={spinner} alt="loading" />}
       <div className="results">
         {options.length && !error
           ? options.map((option: optionType, i: number) => {
@@ -179,11 +156,13 @@ const Search: FC = () => {
                     setHovered={setHovered}
                   />
                 );
+              } else {
+                return null;
               }
             })
           : null}
       </div>
-      {error && <div>Error occured</div>}
+      {error && <div className="error">Error occured</div>}
     </div>
   );
 };
