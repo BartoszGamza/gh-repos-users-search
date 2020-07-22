@@ -136,6 +136,7 @@ const Search: FC = () => {
   return (
     <div className="wrapper">
       <input
+        data-testid="search-input"
         placeholder="Search for rusers and repositories"
         className="input"
         ref={inputRef}
