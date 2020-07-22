@@ -26,6 +26,7 @@ const Search: FC = () => {
   const [loading, setLoading] = useState(false);
   const [cursor, setCursor] = useState(0);
   const [hovered, setHovered] = useState<optionType | undefined>(undefined);
+  const [open, setOpen] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const downKey = useKey('ArrowDown', inputRef);
@@ -67,8 +68,10 @@ const Search: FC = () => {
       setLoading(true);
     } else if (options.length) {
       setOptions([]);
-      setError(false);
       setLoading(false);
+    } else {
+      setOpen(false);
+      setError(false);
     }
   };
 
@@ -77,8 +80,8 @@ const Search: FC = () => {
       const contexts = ['repositories', 'users'];
       const promises = contexts.map((context) => fetchResults(context, query));
       Promise.all(promises).then((response) => {
-        const results = response.flat();
         setLoading(false);
+        const results = response.flat();
         if (results.length) {
           results.sort((a, b) => {
             const aName = a.name.toLowerCase();
@@ -91,8 +94,9 @@ const Search: FC = () => {
             }
             return 0;
           });
-          setOptions(results);
         }
+        setOptions(results);
+        setOpen(true);
       });
     }
     if (loading) {
@@ -144,9 +148,10 @@ const Search: FC = () => {
         onChange={(event) => handleUpdate(event.target.value)}
       />
       {loading && <img className="spinner" src={spinner} alt="loading" />}
-      <div className="results">
-        {options.length && !error
-          ? options.map((option: optionType, i: number) => {
+      {open && !error && (
+        <div className="results">
+          {options.length ? (
+            options.map((option: optionType, i: number) => {
               if (option?.id) {
                 return (
                   <ListOption
@@ -161,8 +166,11 @@ const Search: FC = () => {
                 return null;
               }
             })
-          : null}
-      </div>
+          ) : (
+            <div className="result">No results</div>
+          )}
+        </div>
+      )}
       {error && <div className="error">Error occured</div>}
     </div>
   );
